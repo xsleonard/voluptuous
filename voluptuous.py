@@ -845,6 +845,8 @@ def message(default=None):
         ...   validate('a')
     """
     def decorator(f):
+        if not callable(f):
+            raise UserWarning('Validator not instantiated')
         @wraps(f)
         def check(msg=None):
             @wraps(f)
