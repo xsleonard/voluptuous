@@ -239,7 +239,7 @@ class Schema(object):
         if type_ is type:
             type_ = schema
         if type_ in (int, long, str, unicode, float, complex, object,
-                     list, dict, type(None), bool) or callable(schema):
+                     list, dict, type(None), bool) or _callable(schema):
             return _compile_scalar(schema)
         raise SchemaError('unsupported schema data type %r' %
                           type(schema).__name__)
@@ -589,7 +589,7 @@ def _compile_scalar(schema):
                 raise Invalid(msg, path)
         return validate_instance
 
-    if callable(schema):
+    if _callable(schema):
         def validate_callable(path, data):
             try:
                 return schema(data)
@@ -610,6 +610,14 @@ def _compile_scalar(schema):
         return data
 
     return validate_value
+
+
+def _callable(f):
+    ''' Functions can be marked _not_validator for catching mistakes in
+    usage. '''
+    if getattr(f, '_not_validator', False):
+        raise UserWarning('Function {} is not a validator'.format(f.__name__))
+    return callable(f)
 
 
 def _iterate_mapping_candidates(schema):
@@ -845,8 +853,6 @@ def message(default=None):
         ...   validate('a')
     """
     def decorator(f):
-        if not callable(f):
-            raise UserWarning('Validator not instantiated')
         @wraps(f)
         def check(msg=None):
             @wraps(f)
@@ -856,6 +862,7 @@ def message(default=None):
                 except ValueError:
                     raise Invalid(msg or default or 'invalid value')
             return wrapper
+        check._not_validator = True
         return check
     return decorator
 
