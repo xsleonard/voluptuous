@@ -239,7 +239,7 @@ class Schema(object):
         if type_ is type:
             type_ = schema
         if type_ in (int, long, str, unicode, float, complex, object,
-                     list, dict, type(None)) or callable(schema):
+                     list, dict, type(None), bool) or callable(schema):
             return _compile_scalar(schema)
         raise SchemaError('unsupported schema data type %r' %
                           type(schema).__name__)
