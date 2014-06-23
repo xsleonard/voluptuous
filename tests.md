@@ -266,3 +266,12 @@ Ensure that subclasses of Invalid of are raised as is.
     ...   exc = e
     >>> exc.errors[0].__class__.__name__
     'SpecialInvalid'
+
+
+If record_out=False, nothing should be returned
+
+    >>> schema = Schema(['one', {'two': 'three', 'four': ['five'],
+    ...                          'six': {'seven': 'eight'}}],
+    ...                 record_out=False)
+    >>> schema(['one'])
+    >>> schema([{'two': 'three'}])

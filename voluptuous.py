@@ -202,31 +202,36 @@ class Schema(object):
     validate and optionally convert the value.
     """
 
-    def __init__(self, schema, required=False, extra=False):
+    def __init__(self, schema, required=False, extra=False, record_out=True):
         """Create a new Schema.
 
         :param schema: Validation schema. See :module:`voluptuous` for details.
         :param required: Keys defined in the schema must be in the data.
         :param extra: Keys in the data need not have keys in the schema.
+        :param record_out: Use converted values and return them.  If False,
+            defaults and Coerce have no effect, for example.
         """
         self.schema = schema
         self.required = required
         self.extra = extra
+        self.record_out = record_out
         self._compiled = self._compile(schema)
 
     def __call__(self, data):
         """Validate data against this schema."""
         try:
-            return self._compiled([], data)
+            out = self._compiled([], data, self.record_out)
         except MultipleInvalid:
             raise
         except Invalid as e:
             raise MultipleInvalid([e])
-        # return self.validate([], self.schema, data)
+        else:
+            if self.record_out:
+                return out
 
     def _compile(self, schema):
         if schema is Extra:
-            return lambda _, v: v
+            return lambda _, v, record_out: v if record_out else None
         if isinstance(schema, Object):
             return self._compile_object(schema)
         if isinstance(schema, dict):
@@ -259,7 +264,7 @@ class Schema(object):
             new_value = self._compile(svalue)
             _compiled_schema[skey] = (new_key, new_value)
 
-        def validate_mapping(path, iterable, out):
+        def validate_mapping(path, iterable, out, record_out):
             required_keys = default_required_keys.copy()
             error = None
             errors = []
@@ -268,7 +273,7 @@ class Schema(object):
                 candidates = _iterate_mapping_candidates(_compiled_schema)
                 for skey, (ckey, cvalue) in candidates:
                     try:
-                        new_key = ckey(key_path, key)
+                        new_key = ckey(key_path, key, record_out)
                     except Invalid as e:
                         if len(e.path) > len(key_path):
                             raise
@@ -279,11 +284,14 @@ class Schema(object):
                     # the value is invalid we immediately throw an exception.
                     exception_errors = []
                     try:
-                        out[new_key] = cvalue(key_path, value)
+                        out_val = cvalue(key_path, value, record_out)
                     except MultipleInvalid as e:
                         exception_errors.extend(e.errors)
                     except Invalid as e:
                         exception_errors.append(e)
+                    else:
+                        if record_out:
+                            out[new_key] = out_val
 
                     if exception_errors:
                         for err in exception_errors:
@@ -303,13 +311,13 @@ class Schema(object):
                     required_keys.discard(skey)
                     break
                 else:
-                    if self.extra:
+                    if self.extra and out is not None:
                         out[key] = value
                     else:
                         errors.append(Invalid('extra keys not allowed', key_path))
 
             for key in required_keys:
-                if getattr(key, 'default', UNDEFINED) is not UNDEFINED:
+                if getattr(key, 'default', UNDEFINED) is not UNDEFINED and record_out:
                     out[key.schema] = key.default
                 else:
                     msg = key.msg if hasattr(key, 'msg') and key.msg else 'required key not provided'
@@ -341,14 +349,15 @@ class Schema(object):
         base_validate = self._compile_mapping(
             schema, invalid_msg='object value')
 
-        def validate_object(path, data):
+        def validate_object(path, data, record_out):
             if (schema.cls is not UNDEFINED
                     and not isinstance(data, schema.cls)):
                 raise Invalid('expected a {0!r}'.format(schema.cls), path)
             iterable = _iterate_object(data)
             iterable = ifilter(lambda item: item[1] is not None, iterable)
-            out = base_validate(path, iterable, {})
-            return type(data)(**out)
+            out = base_validate(path, iterable, {}, record_out)
+            if record_out:
+                return type(data)(**out)
 
         return validate_object
 
@@ -441,7 +450,7 @@ class Schema(object):
                 g = groups_of_inclusion.setdefault(node.group_of_inclusion, [])
                 g.append(node)
 
-        def validate_dict(path, data):
+        def validate_dict(path, data, record_out):
             if not isinstance(data, dict):
                 raise Invalid('expected a dictionary', path)
 
@@ -477,8 +486,7 @@ class Schema(object):
             if errors:
                 raise MultipleInvalid(errors)
 
-            out = type(data)()
-            return base_validate(path, iteritems(data), out)
+            return base_validate(path, iteritems(data), type(data)(), record_out)
 
         return validate_dict
 
@@ -498,7 +506,7 @@ class Schema(object):
         _compiled = [self._compile(s) for s in schema]
         seq_type_name = seq_type.__name__
 
-        def validate_sequence(path, data):
+        def validate_sequence(path, data, record_out):
             if not isinstance(data, seq_type):
                 raise Invalid('expected a %s' % seq_type_name, path)
 
@@ -515,19 +523,23 @@ class Schema(object):
                 invalid = None
                 for validate in _compiled:
                     try:
-                        out.append(validate(index_path, value))
-                        break
+                        new_val = validate(index_path, value, record_out)
                     except Invalid as e:
                         if len(e.path) > len(index_path):
                             raise
                         invalid = e
+                    else:
+                        if record_out:
+                            out.append(new_val)
+                        break
                 else:
                     if len(invalid.path) <= len(index_path):
                         invalid = Invalid('invalid %s value' % seq_type_name, index_path)
                     errors.append(invalid)
             if errors:
                 raise MultipleInvalid(errors)
-            return type(data)(out)
+            if record_out:
+                return type(data)(out)
         return validate_sequence
 
     def _compile_tuple(self, schema):
@@ -566,33 +578,34 @@ def _compile_scalar(schema):
 
     The schema can either be a value or a type.
 
-    >>> _compile_scalar(int)([], 1)
+    >>> _compile_scalar(int)([], 1, True)
     1
     >>> with raises(Invalid, 'expected float'):
-    ...   _compile_scalar(float)([], '1')
+    ...   _compile_scalar(float)([], '1', True)
 
     Callables have
-    >>> _compile_scalar(lambda v: float(v))([], '1')
+    >>> _compile_scalar(lambda v: float(v))([], '1', True)
     1.0
 
     As a convenience, ValueError's are trapped:
 
     >>> with raises(Invalid, 'not a valid value'):
-    ...   _compile_scalar(lambda v: float(v))([], 'a')
+    ...   _compile_scalar(lambda v: float(v))([], 'a', True)
     """
     if isinstance(schema, type):
-        def validate_instance(path, data):
+        def validate_instance(path, data, record_out):
             if isinstance(data, schema):
-                return data
+                if record_out:
+                    return data
             else:
                 msg = 'expected %s' % schema.__name__
                 raise Invalid(msg, path)
         return validate_instance
 
     if callable(schema):
-        def validate_callable(path, data):
+        def validate_callable(path, data, record_out):
             try:
-                return schema(data)
+                val = schema(data)
             except ValueError as e:
                 raise Invalid('not a valid value', path)
             except MultipleInvalid as e:
@@ -602,12 +615,15 @@ def _compile_scalar(schema):
             except Invalid as e:
                 e.path = path + e.path
                 raise
+            if record_out:
+                return val
         return validate_callable
 
-    def validate_value(path, data):
+    def validate_value(path, data, record_out):
         if data != schema:
             raise Invalid('not a valid value', path)
-        return data
+        if record_out:
+            return data
 
     return validate_value
 
