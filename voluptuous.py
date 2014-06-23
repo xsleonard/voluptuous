@@ -202,7 +202,7 @@ class Schema(object):
     validate and optionally convert the value.
     """
 
-    def __init__(self, schema, required=False, extra=False, record_out=True):
+    def __init__(self, schema, required=False, extra=False):
         """Create a new Schema.
 
         :param schema: Validation schema. See :module:`voluptuous` for details.
@@ -214,19 +214,18 @@ class Schema(object):
         self.schema = schema
         self.required = required
         self.extra = extra
-        self.record_out = record_out
         self._compiled = self._compile(schema)
 
-    def __call__(self, data):
+    def __call__(self, data, record_out=True):
         """Validate data against this schema."""
         try:
-            out = self._compiled([], data, self.record_out)
+            out = self._compiled([], data, record_out)
         except MultipleInvalid:
             raise
         except Invalid as e:
             raise MultipleInvalid([e])
         else:
-            if self.record_out:
+            if record_out:
                 return out
 
     def _compile(self, schema):

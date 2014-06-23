@@ -271,7 +271,6 @@ Ensure that subclasses of Invalid of are raised as is.
 If record_out=False, nothing should be returned
 
     >>> schema = Schema(['one', {'two': 'three', 'four': ['five'],
-    ...                          'six': {'seven': 'eight'}}],
-    ...                 record_out=False)
-    >>> schema(['one'])
-    >>> schema([{'two': 'three'}])
+    ...                          'six': {'seven': 'eight'}}])
+    >>> schema(['one'], record_out=False)
+    >>> schema([{'two': 'three'}], record_out=False)
