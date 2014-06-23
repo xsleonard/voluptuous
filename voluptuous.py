@@ -105,7 +105,7 @@ else:
 
 
 __author__ = 'Alec Thomas <alec@swapoff.org>'
-__version__ = '0.8.5'
+__version__ = '0.8.6'
 
 
 @contextmanager
@@ -239,7 +239,7 @@ class Schema(object):
         if type_ is type:
             type_ = schema
         if type_ in (int, long, str, unicode, float, complex, object,
-                     list, dict, type(None)) or callable(schema):
+                     list, dict, type(None), bool) or _callable(schema):
             return _compile_scalar(schema)
         raise SchemaError('unsupported schema data type %r' %
                           type(schema).__name__)
@@ -589,7 +589,7 @@ def _compile_scalar(schema):
                 raise Invalid(msg, path)
         return validate_instance
 
-    if callable(schema):
+    if _callable(schema):
         def validate_callable(path, data):
             try:
                 return schema(data)
@@ -610,6 +610,14 @@ def _compile_scalar(schema):
         return data
 
     return validate_value
+
+
+def _callable(f):
+    ''' Functions can be marked _not_validator for catching mistakes in
+    usage. '''
+    if getattr(f, '_not_validator', False):
+        raise UserWarning('Function {} is not a validator'.format(f.__name__))
+    return callable(f)
 
 
 def _iterate_mapping_candidates(schema):
@@ -796,6 +804,14 @@ def Extra(_):
 extra = Extra
 
 
+def not_validator(f):
+    ''' Marks a function as not a validator, to protect against mistakes.
+    Must be the topmost decorator '''
+    f._not_validator = True
+    return f
+
+
+@not_validator
 def Msg(schema, msg):
     """Report a user-friendly message if a schema fails to validate.
 
@@ -825,6 +841,7 @@ def Msg(schema, msg):
     return f
 
 
+@not_validator
 def message(default=None):
     """Convenience decorator to allow functions to provide a message.
 
@@ -858,6 +875,7 @@ def message(default=None):
     return decorator
 
 
+@not_validator
 def truth(f):
     """Convenience decorator to convert truth functions into validators.
 
@@ -879,6 +897,7 @@ def truth(f):
     return check
 
 
+@not_validator
 def Coerce(type, msg=None):
     """Coerce a value to a type.
 
@@ -909,6 +928,7 @@ def Coerce(type, msg=None):
     return f
 
 
+@not_validator
 @message('value was not true')
 @truth
 def IsTrue(v):
@@ -931,6 +951,7 @@ def IsTrue(v):
     return v
 
 
+@not_validator
 @message('value was not false')
 def IsFalse(v):
     """Assert that a value is false, in the Python sense.
@@ -946,6 +967,7 @@ def IsFalse(v):
     return v
 
 
+@not_validator
 @message('expected boolean')
 def Boolean(v):
     """Convert human-readable boolean values to a bool.
@@ -969,6 +991,7 @@ def Boolean(v):
     return bool(v)
 
 
+@not_validator
 def Any(*validators, **kwargs):
     """Use the first validated value.
 
@@ -1012,6 +1035,7 @@ def Any(*validators, **kwargs):
     return f
 
 
+@not_validator
 def All(*validators, **kwargs):
     """Value must pass all validators.
 
@@ -1037,6 +1061,7 @@ def All(*validators, **kwargs):
     return f
 
 
+@not_validator
 def Match(pattern, msg=None):
     """Value must be a string that matches the regular expression.
 
@@ -1069,6 +1094,7 @@ def Match(pattern, msg=None):
     return f
 
 
+@not_validator
 def Replace(pattern, substitution, msg=None):
     """Regex substitution.
 
@@ -1085,6 +1111,7 @@ def Replace(pattern, substitution, msg=None):
     return f
 
 
+@not_validator
 @message('expected a URL')
 def Url(v):
     """Verify that the value is a URL.
@@ -1102,6 +1129,7 @@ def Url(v):
         raise ValueError
 
 
+@not_validator
 @message('not a file')
 @truth
 def IsFile(v):
@@ -1109,6 +1137,7 @@ def IsFile(v):
     return os.path.isfile(v)
 
 
+@not_validator
 @message('not a directory')
 @truth
 def IsDir(v):
@@ -1120,6 +1149,7 @@ def IsDir(v):
     return os.path.isdir(v)
 
 
+@not_validator
 @message('path does not exist')
 @truth
 def PathExists(v):
@@ -1127,6 +1157,7 @@ def PathExists(v):
     return os.path.exists(v)
 
 
+@not_validator
 def Range(min=None, max=None, min_included=True, max_included=True, msg=None):
     """Limit a value to a range.
 
@@ -1163,6 +1194,7 @@ def Range(min=None, max=None, min_included=True, max_included=True, msg=None):
     return f
 
 
+@not_validator
 def Clamp(min=None, max=None, msg=None):
     """Clamp a value to a range.
 
@@ -1178,6 +1210,7 @@ def Clamp(min=None, max=None, msg=None):
     return f
 
 
+@not_validator
 def Length(min=None, max=None, msg=None):
     """The length of a value must be in a certain range."""
     @wraps(Length)
@@ -1190,6 +1223,7 @@ def Length(min=None, max=None, msg=None):
     return f
 
 
+@not_validator
 def In(container, msg=None):
     """Validate that a value is in a collection."""
     @wraps(In)
@@ -1240,6 +1274,7 @@ def Title(v):
     return str(v).title()
 
 
+@not_validator
 def DefaultTo(default_value, msg=None):
     """Sets a value to default_value if none provided.
 
@@ -1255,6 +1290,7 @@ def DefaultTo(default_value, msg=None):
     return f
 
 
+@not_validator
 def ExactSequence(validators, **kwargs):
     """Matches each element in a sequence against the corresponding element in
     the validators.
@@ -1281,6 +1317,7 @@ def ExactSequence(validators, **kwargs):
             raise e if msg is None else Invalid(msg)
         return v
     return f
+
 
 if __name__ == '__main__':
     import doctest
