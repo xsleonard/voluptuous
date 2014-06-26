@@ -693,6 +693,14 @@ class Marker(object):
     def __repr__(self):
         return repr(self.schema)
 
+    def __eq__(self, other):
+        if not isinstance(other, Marker):
+            return False
+        return self.schema == other.schema
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
 
 class Optional(Marker):
     """Mark a node in the schema as optional."""
